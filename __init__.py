@@ -535,6 +535,7 @@ class OBJECT_OT_blvtf_export_active_img(Operator, AddObjectHelper):
 	bl_idname = 'mesh.blvtf_export_active_img'
 	bl_label = 'Export Active Image'
 	bl_options = {'REGISTER'}
+	bl_description = """Export the image you're looking at right now"""
 
 	def execute(self, context):
 		# img_data = context.space_data.image
@@ -547,6 +548,7 @@ class OBJECT_OT_blvtf_export_marked_imgs(Operator, AddObjectHelper):
 	bl_idname = 'mesh.blvtf_export_marked_imgs'
 	bl_label = 'Export Marked Images'
 	bl_options = {'REGISTER'}
+	bl_description = 'Export all the images from this blend file which were marked for export according to their settings ("Export this image" checkbox)'
 
 	def execute(self, context):
 		for eimg in bpy.data.images:
@@ -560,6 +562,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 	bl_idname = 'mesh.blvtf_folder_export'
 	bl_label = 'Batch Convert'
 	bl_options = {'REGISTER'}
+	bl_description = 'Take images from the specified folder and convert them to VTF'
 
 	def execute(self, context):
 
