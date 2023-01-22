@@ -311,13 +311,15 @@ def blvtf_img_to_tga(imgpath):
 	tgt_path.unlink(missing_ok=True)
 	magix_prms = [
 		str(magix_exe),
-		str(imgpath),
+		f'{imgpath}[0]',
 		str(tgt_path)
 	]
 
 	tga_echo = None
 	with subprocess.Popen(magix_prms, stdout=subprocess.PIPE, bufsize=10**8) as img_pipe:
 		tga_echo = img_pipe.stdout.read()
+
+	print('TGA ECHO', tga_echo.decode())
 
 	if not tgt_path.is_file():
 		return False
@@ -328,6 +330,10 @@ def blvtf_img_to_tga(imgpath):
 def blvtf_emb_alpha(rgb, alpha):
 	rgb = Path(rgb)
 	alpha = Path(alpha)
+
+	# Sometimes for whatever reason it fails to embed alpha to formats like psd...
+	# It's funny how close this is to deleting the source image...
+	# rgb = blvtf_img_to_tga(rgb)
 
 	# if alpha is not of the same size as rgb - rescale it to fit
 	rgb_dims = blvtf_get_img_dims(rgb)
@@ -343,7 +349,7 @@ def blvtf_emb_alpha(rgb, alpha):
 	magix_prms = [
 		str(magix_exe),
 		# rgb
-		str(rgb),
+		f'{rgb}[0]',
 		# alpha
 		str(resized_alpha or alpha),
 		'-alpha', 'off',
@@ -357,6 +363,8 @@ def blvtf_emb_alpha(rgb, alpha):
 
 	if resized_alpha != None:
 		resized_alpha.unlink(missing_ok=True)
+
+	# rgb.unlink(missing_ok=True)
 
 	if not tgt_path.is_file():
 		return False
@@ -388,6 +396,7 @@ def blvtf_export_img_to_vtf(img_info):
 	# embed alpha, if any
 	img_src_w_alpha = None
 	if emb_alpha.is_file():
+		print('trying to add alpha...')
 		img_src_w_alpha = blvtf_emb_alpha(img_src, emb_alpha)
 
 	# convert to applicable format, if needed
