@@ -10,6 +10,8 @@ bl_info = {
 }
 
 
+# todo: batch syntax definition file
+# todo: R/G/B/A channels switch in the blvtf GUI
 
 
 
