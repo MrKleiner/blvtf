@@ -1,7 +1,7 @@
 bl_info = {
 	'name': 'Blender VTF',
 	'author': 'MrKleiner',
-	'version': (0, 15),
+	'version': (0, 21),
 	'blender': (3, 4, 1),
 	'location': 'N menu in the Image Editor / UV Editor',
 	'description': """VTF Edit GUI in Blender""",
