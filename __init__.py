@@ -158,6 +158,15 @@ blvtf_img_formats = (
 	('UVLX8888', 'UVLX8888', 'UVLX8888'),
 )
 
+blvtf_img_channels = (
+	('COLOR_ALPHA', 'RGBA', 'RGBA'),
+	('COLOR', 'RGB', 'RGB'),
+	('RED', 'R', 'R'),
+	('GREEN', 'G', 'G'),
+	('BLUE', 'B', 'B'),
+	('ALPHA', 'A', 'A'),
+)
+
 blvtf_vtf_versions = (
 	('7.5', '7.5', 'The latest, released with Alien Swarm, not supported in everything below Alien Swarm'),
 	('7.4', '7.4', 'Released with Orange Box, the one used by current 2013SDK, tf2, etc.'),
@@ -454,6 +463,11 @@ def strhash(s):
 	except Exception as e:
 		return hashlib.sha256(str(s).encode()).hexdigest()
 	
+
+def blvtf_set_view_channel(self, context):
+	context.space_data.display_channels = context.scene.blvtf_exp_params.display_channel
+
+
 
 # self.report({'WARNING'}, str(e))
 
@@ -1117,6 +1131,17 @@ class blvtf_individual_image_props_declaration(PropertyGroup):
 
 
 class blvtf_shared_image_props_declaration(PropertyGroup):
+
+	# shortcut to display channels Enum in the top right corner
+	display_channel : EnumProperty(
+		items=blvtf_img_channels,
+		name='Display Channel',
+		description="""Image Channel to Preview. This doesn't affect export, this is just a shortcut to the dropdown in the top right corner of the editor""",
+		# default='COLOR_ALPHA',
+		update=blvtf_set_view_channel,
+	)
+
+
 	vtfcmd_ver : EnumProperty(
 		items=(
 			('new', 'Reloaded', 'Modern converter'),
@@ -1489,6 +1514,9 @@ class IMAGE_EDITOR_PT_blvtf_individual_img_params_panel(bpy.types.Panel):
 		current_img = context.space_data.image
 		img_vtf_prms = current_img.blvtf_img_params
 		layout.alignment = 'RIGHT'
+
+		layout.row().label(text='Image Channel to Preview')
+		layout.row().prop(context.scene.blvtf_exp_params, 'display_channel', expand=True)
 
 		#
 		# Main params

@@ -1,5 +1,5 @@
 # blvtf
-VTFEdit inside Blender with a number of improvements and new features
+VTFEdit inside Blender with a number of improvements and new features, such as advanced wildcards
 
 # Installation. READ THIS SHORT SENTENCE I BEG YOU
 Download this repo as zip, install as an addon AND RESTART BLENDER !
