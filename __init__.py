@@ -632,10 +632,13 @@ def blvtf_export_img_datablock(self, context, img):
 		self.report({'WARNING'}, f'The Image {img_data.name} is missing from disk, skipping')
 		return
 
+	add_alpha = False
 	if img_vtf_prms.embed_to_alpha:
-		add_alpha = aPath(img_vtf_prms.image_to_embed.filepath)
-	else:
-		add_alpha = False
+		if not img_vtf_prms.image_to_embed:
+			self.report({'WARNING'}, f'The Image {img_data.name} has "Embed Alpha" enabled, but the target image is missing. No alpha would be embedded')
+		else:
+			add_alpha = aPath(img_vtf_prms.image_to_embed.filepath)
+		
 
 	src_file = aPath(img_data.filepath)
 	# export_filename = aPath(img_vtf_prms.vtf_export_path) / image.name_full
