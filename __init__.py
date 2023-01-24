@@ -12,7 +12,7 @@ bl_info = {
 
 # todo: batch syntax definition file
 # todo: R/G/B/A channels switch in the blvtf GUI
-
+# todo: Update button
 
 
 
@@ -96,7 +96,17 @@ blvtf_sharpen_filters = (
 	('WARPSHARP', 'Warp Sharp', 'Warp Sharp'),
 )
 
+blvtf_sizes_tip = """Yes, this is possible.
+	There are only two actual limitations to VTF dimensions: It cannot be bigger than 65536 pixels on any axis and the total amount of pixels cannot be more than 16.7 million.
+	For instance, 4096 times 4096 = 16.7 million and 32768 times 512 is 16.7 million too.
+	Yes, this will work totally fine without any performance impact.
+	It's speculated that the resulting VTF should be less than 33mb in size for it to be loaded by the engine.
+""".replace('\t', '').strip()
+
 blvtf_applicable_sizes = (
+	('32768', '32768', blvtf_sizes_tip),
+	('16384', '16384', blvtf_sizes_tip),
+	('8192', '8192', blvtf_sizes_tip),
 	('4096', '4096', '4096'),
 	('2048', '2048', '2048'),
 	('1024', '1024', '1024'),
@@ -183,7 +193,7 @@ blvtf_vtf_flags = (
 blvtf_resize_methods = (
 	('NEAREST', 'Nearest Power Of 2', '1023 -> 1024, 570 -> 512'),
 	('BIGGEST', 'Biggest Power of 2', '1023 -> 1024, 570 -> 1024'),
-	('SMALLEST', 'Smallest Power of 2', '1023 -> 512, 570 -> 1024')
+	('SMALLEST', 'Smallest Power of 2', '1023 -> 512, 570 -> 512')
 )
 
 # file extensions supported by VTFCmd. Everything else has to be converted with imagemagick beforehand
@@ -193,14 +203,57 @@ blvtf_vtfcmd_supported = (
 	'.jpg',
 	'.png',
 	'.bmp',
-	'.dds'
+	'.dds',
+	'.gif'
+)
+
+blvtf_power_of_two = (
+	32768,
+	16384,
+	8192,
+	4096,
+	2048,
+	1024,
+	512,
+	256,
+	128,
+	64,
+	32,
+	16,
+	8,
+	4,
+	2,
 )
 
 
-
-
-
-
+blvtf_img_formats_lone = (
+	'DXT1',
+	'DXT3',
+	'DXT5',
+	'BGR888',
+	'BGR565',
+	'BGRA8888',
+	'BGRA4444',
+	'I8',
+	'IA88',
+	'A8',
+	'DXT1_ONEBITALPHA',
+	'RGB888',
+	'RGB565',
+	'RGBA8888',
+	'ABGR8888',
+	'RGB888_BLUESCREEN',
+	'BGR888_BLUESCREEN',
+	'ARGB8888',
+	'BGRX8888',
+	'BGRX5551',
+	'BGRA5551',
+	'UV88',
+	'UVWQ8888',
+	'RGBA16161616F',
+	'RGBA16161616',
+	'UVLX8888',
+)
 
 
 
@@ -263,10 +316,10 @@ def blvtf_ensure_addon_setup():
 		subprocess.run(unpk_prms, stdout=subprocess.DEVNULL)
 
 
-
 blvtf_ensure_addon_setup()
 
 # get image XY dimensions in pixels
+# returns XY tuple
 def blvtf_get_img_dims(imgpath):
 	magix_prms = [
 		str(magix_exe),
@@ -331,10 +384,6 @@ def blvtf_emb_alpha(rgb, alpha):
 	rgb = Path(rgb)
 	alpha = Path(alpha)
 
-	# Sometimes for whatever reason it fails to embed alpha to formats like psd...
-	# It's funny how close this is to deleting the source image...
-	# rgb = blvtf_img_to_tga(rgb)
-
 	# if alpha is not of the same size as rgb - rescale it to fit
 	rgb_dims = blvtf_get_img_dims(rgb)
 	alpha_dims = blvtf_get_img_dims(alpha)
@@ -361,42 +410,60 @@ def blvtf_emb_alpha(rgb, alpha):
 	with subprocess.Popen(magix_prms, stdout=subprocess.PIPE, bufsize=10**8) as img_pipe:
 		alpha_echo = img_pipe.stdout.read()
 
+	# since resized alpha is a separate image - delete it, because only resulting composite is needed
+	# (which is present already)
 	if resized_alpha != None:
 		resized_alpha.unlink(missing_ok=True)
-
-	# rgb.unlink(missing_ok=True)
 
 	if not tgt_path.is_file():
 		return False
 
 	return tgt_path
 
+# this simply first applies bpy.path.abspath and then Path()
+def aPath(pth):
+	# todo: this str conversion is some rubbish
+	return Path(bpy.path.abspath(str(pth)))
 
+# self.report({'WARNING'}, str(e))
 
 # Convert image from path to vtf
 # takes a dict of params
 {
 	'enc': ('(no alpha) DXT1', '(w alpha) DXT5'),
-	'mips': False or ('resize_filter', 'sharpen'),
+	'mips': False or ('resize_filter', 'sharpen_filter'),
 	'comp_refl': True,
 	'src': 'W:/vid_dl/sex.tga',
 	'dest': 'W:/vid_dl/bdsm/pootis.vtf',
 	'emb_alpha': 'W:/vid_dl/specular.tga',
-	'resize': False or ('method', 'filter', 'sharpen'),
+	'resize': False or ('resizing_rule', 'resize_filter', 'sharpen_filter'),
 	'clamp_dims': False or (512, 512),
 	'flags': ('NORMAL', 'NOMIP', 'MINMIP'),
 }
-def blvtf_export_img_to_vtf(img_info):
+def blvtf_export_img_to_vtf(img_info, reporter=None):
 	img_src = Path(img_info['src'])
 	vtf_dest = Path(img_info['dest'])
 	emb_alpha = Path(str(img_info['emb_alpha']))
+
+	# check whether the destination folder exists
+	if not vtf_dest.parent.is_dir():
+		if reporter:
+			reporter.report({'WARNING'}, f'The destination folder >{vtf_dest.parent}< For the image >{img_src.name}< does not exist, skipping')
+		return
+
+	# check whether the image is of applicable size
+	img_dims = blvtf_get_img_dims(img_src)
+	if (not img_dims[0] in blvtf_power_of_two or not img_dims[1] in blvtf_power_of_two) and not img_info['resize']:
+		if reporter:
+			reporter.report({'WARNING'}, f"""Skipping image {img_src.name}, because it's of unapplicable size! {img_dims}, please enable resizing""")
+		return
 
 	shared_params = bpy.context.scene.blvtf_exp_params
 
 	# embed alpha, if any
 	img_src_w_alpha = None
 	if emb_alpha.is_file():
-		print('trying to add alpha...')
+		print('BLVTF: Trying to add alpha...')
 		img_src_w_alpha = blvtf_emb_alpha(img_src, emb_alpha)
 
 	# convert to applicable format, if needed
@@ -425,7 +492,7 @@ def blvtf_export_img_to_vtf(img_info):
 			])
 
 	# clamp image XY
-	if img_info['clamp_dims']:
+	if img_info['resize'] and img_info['clamp_dims']:
 		vtfcmd_args.extend([
 			'-rclampwidth', img_info['clamp_dims'][0],
 			'-rclampheight', img_info['clamp_dims'][1],
@@ -468,7 +535,7 @@ def blvtf_export_img_to_vtf(img_info):
 	])
 
 	# execute conversion
-	print('executing conversion', str(img_src_w_alpha or img_src or img_src_converted))
+	print('Executing VTF conversion', str(input_filepath))
 	vtf_echo = None
 	with subprocess.Popen(vtfcmd_args, stdout=subprocess.PIPE, bufsize=10**8) as vtf_pipe:
 		vtf_echo = vtf_pipe.stdout.read()
@@ -492,15 +559,27 @@ def blvtf_export_img_datablock(self, context, img):
 	img_vtf_prms = img_data.blvtf_img_params
 	shared_params = bpy.context.scene.blvtf_exp_params
 
+	# todo: Packed images are not supported yet
+	if img_data.is_embedded_data:
+		# todo: this reports with the datablock name, while other reporters use actual filename. This might be confusing at times
+		self.report({'WARNING'}, f'Image {img_data.name} is packed, but packed images are not supported yet. Skipping...')
+		return
+
+	# Check whether the source image exists
+	# Because why not...
+	if not aPath(img_data.filepath).is_file():
+		self.report({'WARNING'}, f'The Image {img_data.name} is missing from disk, skipping')
+		return
+
 	if img_vtf_prms.embed_to_alpha:
-		add_alpha = bpy.path.abspath(img_vtf_prms.image_to_embed.filepath)
+		add_alpha = aPath(img_vtf_prms.image_to_embed.filepath)
 	else:
 		add_alpha = False
 
-	src_file = Path(bpy.path.abspath(img_data.filepath))
-	# export_filename = Path(bpy.path.abspath(img_vtf_prms.vtf_export_path)) / image.name_full
+	src_file = aPath(img_data.filepath)
+	# export_filename = aPath(img_vtf_prms.vtf_export_path) / image.name_full
 	# by default the export destination is target path + source file name with suffix changed to .vtf
-	export_filename = Path(bpy.path.abspath(img_vtf_prms.vtf_export_path)) / f'{src_file.stem}.vtf'
+	export_filename = aPath(img_vtf_prms.vtf_export_path) / f'{src_file.stem}.vtf'
 	# but if rename is enabled - get the new name and add .vtf suffix to it
 	if img_vtf_prms.vtf_named_export:
 		export_filename = export_filename.parent / f'{img_vtf_prms.vtf_new_name}.vtf'
@@ -515,14 +594,14 @@ def blvtf_export_img_datablock(self, context, img):
 		'enc': (img_vtf_prms.vtf_format, img_vtf_prms.vtf_format_w_alph),
 		'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if img_vtf_prms.vtf_mipmaps_enable else False,
 		'comp_refl': img_vtf_prms.vtf_compute_refl,
-		'src': bpy.path.abspath(img_data.filepath),
+		'src': aPath(img_data.filepath),
 		'dest': export_filename,
 		'emb_alpha': add_alpha,
 		'resize': (img_vtf_prms.vtf_resize_method, shared_params.vtf_resize_filter, shared_params.vtf_resize_sharpen_filter) if img_vtf_prms.vtf_enable_resize else False,
 		'clamp_dims': (img_vtf_prms.vtf_resize_clamp_maxwidth, img_vtf_prms.vtf_resize_clamp_maxheight) if img_vtf_prms.vtf_resize_clamp else False,
 		# todo: oh fuck
 		'flags': tuple(resulting_flags),
-	})
+	}, self)
 
 
 
@@ -538,7 +617,7 @@ def blvtf_export_img_datablock(self, context, img):
 
 # =========================================================
 # ---------------------------------------------------------
-#                       Operator Links
+#                       Operators
 # ---------------------------------------------------------
 # =========================================================
 
@@ -551,6 +630,7 @@ class OBJECT_OT_blvtf_export_active_img(Operator, AddObjectHelper):
 	def execute(self, context):
 		# img_data = context.space_data.image
 		# img_vtf_prms = context.space_data.image.blvtf_img_params
+
 		blvtf_export_img_datablock(self, context, context.space_data.image)
 		return {'FINISHED'}
 
@@ -565,6 +645,7 @@ class OBJECT_OT_blvtf_export_marked_imgs(Operator, AddObjectHelper):
 		for eimg in bpy.data.images:
 			if eimg.blvtf_img_params.do_export == True:
 				blvtf_export_img_datablock(self, context, eimg)
+
 		return {'FINISHED'}
 
 
@@ -580,8 +661,17 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 		shared_params = context.scene.blvtf_exp_params
 		batch_params = context.scene.blvtf_batch_params
 
-		input_folder = Path(bpy.path.abspath(batch_params.batch_folder_input))
-		output_folder = Path(bpy.path.abspath(batch_params.batch_folder_output))
+		input_folder = aPath(batch_params.batch_folder_input)
+		output_folder = aPath(batch_params.batch_folder_output)
+
+		# If TextMax is enabled, then a text file has to be specified
+		if batch_params.txtmax_enabled and not batch_params.txtmax_file:
+			self.report({'WARNING'}, 'TxtMax is enabled, but no text file selected. Aborting')
+			return {'FINISHED'}
+
+		if not output_folder.is_dir():
+			self.report({'WARNING'}, 'The destination folder does not exist')
+			return {'FINISHED'}
 
 		# important todo: proper wildcard detection
 		wcard_symbols = (
@@ -594,6 +684,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 			'>',
 			'|'
 		)
+
 
 		glob_pattern = '*.*'
 		if len(set(wcard_symbols) & set(input_folder.name)) != 0:
@@ -620,17 +711,10 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 				'clamp_dims': (batch_params.vtf_resize_clamp_maxwidth, batch_params.vtf_resize_clamp_maxheight) if batch_params.vtf_resize_clamp else False,
 				# todo: oh fuck
 				'flags': tuple(vtf_flags),
-			})
+			}, self)
 
 
 		return {'FINISHED'}
-
-
-
-
-
-
-
 
 
 
@@ -798,16 +882,16 @@ class blvtf_individual_image_props_declaration(PropertyGroup):
 	# W
 	vtf_resize_clamp_maxwidth : EnumProperty(
 		items=blvtf_applicable_sizes,
-		name='Maximum Width',
-		description='Dimensions',
-		# default = "nil"
+		name='Max. Width',
+		description='X Dimension',
+		default='4096'
 		)
 	# H
 	vtf_resize_clamp_maxheight : EnumProperty(
 		items=blvtf_applicable_sizes,
-		name='Maximum Height',
-		description='Dimensions'
-		# default = "nil"
+		name='Max. Height',
+		description='Y Dimension',
+		default='4096'
 	)
 
 
@@ -831,102 +915,102 @@ class blvtf_individual_image_props_declaration(PropertyGroup):
 	# -------
 	vtf_flag_POINTSAMPLE : BoolProperty(
 		name='Point Sample',
-		description='Point Sample',
+		description='POINTSAMPLE',
 		default = False
 		)
 	vtf_flag_TRILINEAR : BoolProperty(
 		name='Trilinear',
-		description='Point Sample',
+		description='TRILINEAR',
 		default = False
 		)
 	vtf_flag_CLAMPS : BoolProperty(
 		name='Clamp S',
-		description='Point Sample',
+		description='CLAMPS',
 		default = False
 		)
 	vtf_flag_CLAMPT : BoolProperty(
 		name='Clamp T',
-		description='Point Sample',
+		description='CLAMPT',
 		default = False
 		)
 	vtf_flag_ANISOTROPIC : BoolProperty(
 		name='Anisotropic',
-		description='Point Sample',
+		description='ANISOTROPIC',
 		default = False
 		)
 	vtf_flag_HINT_DXT5 : BoolProperty(
 		name='Hint DXT5',
-		description='Hint DXT5',
+		description='HINT_DXT5',
 		default = False
 		)
 	vtf_flag_NORMAL : BoolProperty(
 		name='Normal Map',
-		description='Normal Map',
+		description='NORMAL',
 		default = False
 		)
 	vtf_flag_NOMIP : BoolProperty(
 		name='No Mipmap',
-		description='No Mipmap',
+		description='NOMIP',
 		default = False
 		)
 	vtf_flag_NOLOD : BoolProperty(
 		name='No Level Of Detail',
-		description='No Level Of Detail',
+		description='NOLOD',
 		default = False
 		)
 	vtf_flag_MINMIP : BoolProperty(
 		name='No Minimum Mipmap',
-		description='No Minimum Mipmap',
+		description='MINMIP',
 		default = False
 		)
 	vtf_flag_PROCEDURAL : BoolProperty(
 		name='Procedural',
-		description='Procedural',
+		description='PROCEDURAL',
 		default = False
 		)
 	vtf_flag_RENDERTARGET : BoolProperty(
 		name='Rendertarget',
-		description='Rendertarget',
+		description='RENDERTARGET',
 		default = False
 		)
 	vtf_flag_DEPTHRENDERTARGET: BoolProperty(
 		name='Depth Render Target',
-		description='Depth Render Target',
+		description='DEPTHRENDERTARGET',
 		default = False
 		)
 	vtf_flag_NODEBUGOVERRIDE: BoolProperty(
 		name='No Debug Override',
-		description='No Debug Override',
+		description='NODEBUGOVERRIDE',
 		default = False
 		)
 	vtf_flag_SINGLECOPY: BoolProperty(
 		name='Single Copy',
-		description='Single Copy',
+		description='SINGLECOPY',
 		default = False
 		)
 	vtf_flag_NODEPTHBUFFER: BoolProperty(
 		name='No Depth Buffer',
-		description='No Depth Buffer',
+		description='NODEPTHBUFFER',
 		default = False
 		)
 	vtf_flag_CLAMPU: BoolProperty(
 		name='Clamp U',
-		description='Clamp U',
+		description='CLAMPU',
 		default = False
 		)
 	vtf_flag_VERTEXTEXTURE: BoolProperty(
 		name='Vertex Texture',
-		description='Vertex Texture',
+		description='VERTEXTEXTURE',
 		default = False
 		)
 	vtf_flag_SSBUMP: BoolProperty(
 		name='SSBump',
-		description='SSBump',
+		description='SSBUMP',
 		default = False
 		)
 	vtf_flag_BORDER: BoolProperty(
 		name='Clamp All',
-		description='Clamp All',
+		description='BORDER',
 		default = False
 		)
 
@@ -1035,7 +1119,26 @@ class blvtf_batch_convert_property_declaration(PropertyGroup):
 	# Format
 	# -------
 
-	# VTF format, like DXT1
+	# txtmax
+	txtmax_enabled : BoolProperty(
+		name='Enable TextMax',
+		description='TextMax batch syntax shite. This discards any wildcards and resizing present in the source folder path',
+		default=False
+	)
+
+	txtmax_use_fallback : BoolProperty(
+		name='Fallback',
+		description="""Don't ignore the rest of the files inside the source folder and apply regular batch options to them (Including wildcard)""",
+		default=False
+	)
+
+	txtmax_file : PointerProperty(
+		name='TxtMax File',
+		type=bpy.types.Text
+	)
+
+
+	# VTF format for images with no alpha channel, like DXT1
 	vtf_format : EnumProperty(
 		items=blvtf_img_formats,
 		name='Encoding',
@@ -1050,6 +1153,7 @@ class blvtf_batch_convert_property_declaration(PropertyGroup):
 		description='Encoding format to use, if image has an alpha channel',
 		default='DXT5'
 	)
+
 
 	# Mipmaps Onn/Off
 	vtf_mipmaps_enable : BoolProperty(
@@ -1088,16 +1192,16 @@ class blvtf_batch_convert_property_declaration(PropertyGroup):
 	# W
 	vtf_resize_clamp_maxwidth : EnumProperty(
 		items=blvtf_applicable_sizes,
-		name='Maximum Width',
-		description='Dimensions',
-		# default = "nil"
+		name='Max. Width',
+		description='X Dimension',
+		default='4096'
 		)
 	# H
 	vtf_resize_clamp_maxheight : EnumProperty(
 		items=blvtf_applicable_sizes,
-		name='Maximum Height',
-		description='Dimensions'
-		# default = "nil"
+		name='Max. Height',
+		description='Y Dimension',
+		default='4096'
 	)
 
 
@@ -1279,13 +1383,16 @@ class IMAGE_EDITOR_PT_blvtf_individual_img_params_panel(bpy.types.Panel):
 		# dumpster.use_property_decorate = False
 
 		# active image data
-		img_vtf_prms = context.space_data.image.blvtf_img_params
+		current_img = context.space_data.image
+		img_vtf_prms = current_img.blvtf_img_params
 		layout.alignment = 'RIGHT'
 
 		#
 		# Main params
 		#
-		layout.prop(img_vtf_prms, 'do_export')
+		row = layout.row()
+		row.prop(img_vtf_prms, 'do_export')
+		row.enabled = not current_img.is_embedded_data
 		layout.prop(img_vtf_prms, 'vtf_format')
 		layout.prop(img_vtf_prms, 'vtf_format_w_alph')
 
@@ -1314,6 +1421,13 @@ class IMAGE_EDITOR_PT_blvtf_individual_img_params_panel(bpy.types.Panel):
 		#
 		# Resizing
 		#
+
+		# display a warning if image is of unapplicable size
+		if (not current_img.size[0] in blvtf_power_of_two or not current_img.size[1] in blvtf_power_of_two) and not img_vtf_prms.vtf_enable_resize:
+			layout.row().label(
+				text=f'WARNING: This image is of unapplicable size {tuple(current_img.size)}, enable resizing or this image will be skipped on export'
+			)
+
 		col = layout.column(align=True)
 		col.prop(img_vtf_prms, 'vtf_enable_resize')
 		resize_col = col.column()
@@ -1416,12 +1530,21 @@ class IMAGE_EDITOR_PT_blvtf_batch_export_prms_panel(bpy.types.Panel):
 		# Shared Scene params
 		batch_vtf_prms = context.scene.blvtf_batch_params
 
-
+		# Input / Output
 		col = layout.column(align=True)
 		col.prop(batch_vtf_prms, 'batch_folder_input')
 		col.prop(batch_vtf_prms, 'batch_folder_output')
 
 
+		# TextMax
+		layout.row().prop(batch_vtf_prms, 'txtmax_enabled')
+		if batch_vtf_prms.txtmax_enabled:
+			col = layout.column(align=True)
+			col.prop(batch_vtf_prms, 'txtmax_use_fallback')
+			col.prop(batch_vtf_prms, 'txtmax_file')
+
+
+		# Formats
 		col = layout.column(align=True)
 		col.prop(batch_vtf_prms, 'vtf_format')
 		col.prop(batch_vtf_prms, 'vtf_format_w_alph')
@@ -1446,7 +1569,7 @@ class IMAGE_EDITOR_PT_blvtf_batch_export_prms_panel(bpy.types.Panel):
 		clamp_col.prop(batch_vtf_prms, 'vtf_resize_clamp_maxheight')
 		clamp_col.enabled = batch_vtf_prms.vtf_resize_clamp
 
-# batch export Flags
+# batch export - Flags
 class IMAGE_EDITOR_PT_blvtf_batch_export_prms_panel_flags(bpy.types.Panel):
 	bl_parent_id = 'IMAGE_EDITOR_PT_blvtf_batch_export_prms_panel'
 	bl_space_type = 'IMAGE_EDITOR'
@@ -1484,8 +1607,15 @@ class IMAGE_EDITOR_PT_blvtf_execute_actions(bpy.types.Panel):
 
 		active_img = context.space_data.image
 
+		# if active_img:
+		row = layout.row()
+		row.operator('mesh.blvtf_export_active_img')
+		row.enabled = False
 		if active_img:
-			layout.operator('mesh.blvtf_export_active_img')
+			if not active_img.is_embedded_data:
+				row.enabled = True
+			else:
+				row.enabled = False
 
 		layout.operator('mesh.blvtf_export_marked_imgs')
 		layout.operator('mesh.blvtf_folder_export')
@@ -1533,3 +1663,6 @@ def register():
 def unregister():
 	unregister_()
 	# del bpy.types.Image.hobo_image_params
+
+
+
