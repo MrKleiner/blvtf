@@ -1108,7 +1108,6 @@ class blvtf_individual_image_props_declaration(PropertyGroup):
 
 
 
-
 class blvtf_shared_image_props_declaration(PropertyGroup):
 	vtfcmd_ver : EnumProperty(
 		items=(
@@ -1319,102 +1318,102 @@ class blvtf_batch_convert_property_declaration(PropertyGroup):
 	# -------
 	vtf_flag_POINTSAMPLE : BoolProperty(
 		name='Point Sample',
-		description='Point Sample',
+		description='POINTSAMPLE',
 		default = False
 		)
 	vtf_flag_TRILINEAR : BoolProperty(
 		name='Trilinear',
-		description='Point Sample',
+		description='TRILINEAR',
 		default = False
 		)
 	vtf_flag_CLAMPS : BoolProperty(
 		name='Clamp S',
-		description='Point Sample',
+		description='CLAMPS',
 		default = False
 		)
 	vtf_flag_CLAMPT : BoolProperty(
 		name='Clamp T',
-		description='Point Sample',
+		description='CLAMPT',
 		default = False
 		)
 	vtf_flag_ANISOTROPIC : BoolProperty(
 		name='Anisotropic',
-		description='Point Sample',
+		description='ANISOTROPIC',
 		default = False
 		)
 	vtf_flag_HINT_DXT5 : BoolProperty(
 		name='Hint DXT5',
-		description='Hint DXT5',
+		description='HINT_DXT5',
 		default = False
 		)
 	vtf_flag_NORMAL : BoolProperty(
 		name='Normal Map',
-		description='Normal Map',
+		description='NORMAL',
 		default = False
 		)
 	vtf_flag_NOMIP : BoolProperty(
 		name='No Mipmap',
-		description='No Mipmap',
+		description='NOMIP',
 		default = False
 		)
 	vtf_flag_NOLOD : BoolProperty(
 		name='No Level Of Detail',
-		description='No Level Of Detail',
+		description='NOLOD',
 		default = False
 		)
 	vtf_flag_MINMIP : BoolProperty(
 		name='No Minimum Mipmap',
-		description='No Minimum Mipmap',
+		description='MINMIP',
 		default = False
 		)
 	vtf_flag_PROCEDURAL : BoolProperty(
 		name='Procedural',
-		description='Procedural',
+		description='PROCEDURAL',
 		default = False
 		)
 	vtf_flag_RENDERTARGET : BoolProperty(
 		name='Rendertarget',
-		description='Rendertarget',
+		description='RENDERTARGET',
 		default = False
 		)
 	vtf_flag_DEPTHRENDERTARGET: BoolProperty(
 		name='Depth Render Target',
-		description='Depth Render Target',
+		description='DEPTHRENDERTARGET',
 		default = False
 		)
 	vtf_flag_NODEBUGOVERRIDE: BoolProperty(
 		name='No Debug Override',
-		description='No Debug Override',
+		description='NODEBUGOVERRIDE',
 		default = False
 		)
 	vtf_flag_SINGLECOPY: BoolProperty(
 		name='Single Copy',
-		description='Single Copy',
+		description='SINGLECOPY',
 		default = False
 		)
 	vtf_flag_NODEPTHBUFFER: BoolProperty(
 		name='No Depth Buffer',
-		description='No Depth Buffer',
+		description='NODEPTHBUFFER',
 		default = False
 		)
 	vtf_flag_CLAMPU: BoolProperty(
 		name='Clamp U',
-		description='Clamp U',
+		description='CLAMPU',
 		default = False
 		)
 	vtf_flag_VERTEXTEXTURE: BoolProperty(
 		name='Vertex Texture',
-		description='Vertex Texture',
+		description='VERTEXTEXTURE',
 		default = False
 		)
 	vtf_flag_SSBUMP: BoolProperty(
 		name='SSBump',
-		description='SSBump',
+		description='SSBUMP',
 		default = False
 		)
 	vtf_flag_BORDER: BoolProperty(
 		name='Clamp All',
-		description='Clamp All',
+		description='BORDER',
 		default = False
 		)
 
