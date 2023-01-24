@@ -1,5 +1,5 @@
 # blvtf
-Basically VTFEdit GUI in Blender with some additional features
+VTFEdit inside Blender with a number of improvements and new features
 
 # Installation. READ THIS SHORT SENTENCE I BEG YOU
 Download this repo as zip, install as an addon AND RESTART BLENDER !
