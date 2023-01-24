@@ -457,17 +457,34 @@ def aPath(pth):
 	# todo: this str conversion is some rubbish
 	return Path(bpy.path.abspath(str(pth)))
 
+# hash string with sha256
 def strhash(s):
 	try:
 		return hashlib.sha256(s).hexdigest()
 	except Exception as e:
 		return hashlib.sha256(str(s).encode()).hexdigest()
-	
+
+
+# Evaluate active flags from source and return an array
+def blvtf_get_active_flags(src):
+	if not src:
+		return []
+
+	vtf_flags = []
+	for flg in blvtf_flag_props:
+		if src.get(flg) == True:
+			# important todo: this 'replace()' is just retarded
+			vtf_flags.append(flg.replace('vtf_flag_', ''))
+
+	return vtf_flags
+
 
 def blvtf_set_view_channel(self, context):
 	context.space_data.display_channels = context.scene.blvtf_exp_params.display_channel
 
-
+# get flags from batch list and insert at current cursor position in the specified txtmax file
+def blvtf_insert_flags_at_cursor(self, context):
+	context.scene.blvtf_batch_params.txtmax_file.write(f"""-{','.join(blvtf_get_active_flags(context.scene.blvtf_batch_params))}""")
 
 # self.report({'WARNING'}, str(e))
 
@@ -628,11 +645,7 @@ def blvtf_export_img_datablock(self, context, img):
 	if img_vtf_prms.vtf_named_export:
 		export_filename = export_filename.parent / f'{img_vtf_prms.vtf_new_name}.vtf'
 
-	resulting_flags = []
-	for flg in blvtf_flag_props:
-		if img_vtf_prms.get(flg) == True:
-			resulting_flags.append(flg.replace('vtf_flag_', ''))
-
+	resulting_flags = blvtf_get_active_flags(img_vtf_prms)
 
 	blvtf_export_img_to_vtf({
 		'enc': (img_vtf_prms.vtf_format, img_vtf_prms.vtf_format_w_alph),
@@ -725,12 +738,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 			traverse_src = input_folder.glob
 
 		# collect flags right away
-		vtf_flags = []
-		for flg in blvtf_flag_props:
-			if shared_params.get(flg) == True:
-				# important todo: this 'replace()' is just retarded
-				vtf_flags.append(flg.replace('vtf_flag_', ''))
-
+		vtf_flags = blvtf_get_active_flags(shared_params)
 
 		# important todo: proper wildcard detection
 		wcard_symbols = (
@@ -827,6 +835,19 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 			blvtf_export_img_to_vtf(tasks[process_task], self)
 
 
+		return {'FINISHED'}
+
+
+
+class OBJECT_OT_blvtf_append_flags_to_txtmax_definition(Operator, AddObjectHelper):
+	bl_idname = 'mesh.blvtf_append_flags_to_txtmax_definition'
+	bl_label = 'Append Flags'
+	bl_options = {'REGISTER'}
+	bl_description = 'Append flags enabled in the batch convert list to the TxtMax text file at the current cursor position using appropriate syntax (Just click this and see what it does)'
+
+	def execute(self, context):
+		if context.scene.blvtf_batch_params.txtmax_file:
+			context.scene.blvtf_batch_params.txtmax_file.write(f"""-{','.join(blvtf_get_active_flags(context.scene.blvtf_batch_params))}""")
 		return {'FINISHED'}
 
 
@@ -1676,6 +1697,11 @@ class IMAGE_EDITOR_PT_blvtf_batch_export_prms_panel(bpy.types.Panel):
 			col.prop(batch_vtf_prms, 'txtmax_use_fallback')
 			col.prop(batch_vtf_prms, 'txtmax_file')
 
+			row = col.row()
+			row.alignment = 'LEFT'
+			row.operator('mesh.blvtf_append_flags_to_txtmax_definition')
+			row.enabled = not not batch_vtf_prms.txtmax_file
+
 
 		# Formats
 		col = layout.column(align=True)
@@ -1779,7 +1805,8 @@ rclasses = (
 	IMAGE_EDITOR_PT_blvtf_execute_actions,
 	OBJECT_OT_blvtf_export_active_img,
 	OBJECT_OT_blvtf_export_marked_imgs,
-	OBJECT_OT_blvtf_folder_convert
+	OBJECT_OT_blvtf_folder_convert,
+	OBJECT_OT_blvtf_append_flags_to_txtmax_definition
 )
 
 register_, unregister_ = bpy.utils.register_classes_factory(rclasses)
