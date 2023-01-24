@@ -12,11 +12,11 @@ Aka the addon is capable of processing .psd files.
 
 # TxtMax
 This addon supports filename pattern matching.
-It's possible to create a file defining which format to use when converting files with a certain suffix:
+It's possible to create a file defining which format to use when converting files with a certain pattern:
  - Go to the blVTF menu
  - Tick the "TxtMax" checkbox
- - Open Blender's text editor (It's just yet another Editor Type which could be found next to DopeSheet in the selection menu located in the top left corner)
- - Either create a new Text or import an existing one
+ - Open Blender's text editor (It's just yet another Editor Type which could be found next to the "Dope Sheet" in the selection menu located in the top left corner)
+ - Either create a new Text or import an existing one (it doesn't has to be saved or anything)
  - Specify this text file in the special field below the "TxtMax" checkbox
 
 Each line inside this file represents a rule according to which the system would try assigning the encoding format.
@@ -24,7 +24,7 @@ Example:
 
 	# You can comment lines like in Python
 	# Syntax is as follows:
-	# WILDCARD_PATTERN FORMAT SIZE_PARAMS|NONE
+	# WILDCARD_PATTERN FORMAT SIZE_PARAMS|NONE FLAGS|NONE
 
 	# Whitespaces in the WILDCARD_PATTERN are not allowed
 
