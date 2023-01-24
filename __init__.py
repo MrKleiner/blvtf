@@ -190,6 +190,29 @@ blvtf_vtf_flags = (
 	('BORDER', 'Clamp All', 'Clamp to border colour on all texture coordinates'),
 )
 
+blvtf_vtf_flags_s = (
+	'POINTSAMPLE',
+	'TRILINEAR',
+	'CLAMPS',
+	'CLAMPT',
+	'ANISOTROPIC',
+	'HINT_DXT5',
+	'NORMAL',
+	'NOMIP',
+	'NOLOD',
+	'MINMIP',
+	'PROCEDURAL',
+	'RENDERTARGET',
+	'DEPTHRENDERTARGET',
+	'NODEBUGOVERRIDE',
+	'SINGLECOPY',
+	'NODEPTHBUFFER',
+	'CLAMPU',
+	'VERTEXTEXTURE',
+	'SSBUMP',
+	'BORDER',
+)
+
 blvtf_resize_methods = (
 	('NEAREST', 'Nearest Power Of 2', '1023 -> 1024, 570 -> 512'),
 	('BIGGEST', 'Biggest Power of 2', '1023 -> 1024, 570 -> 1024'),
@@ -425,6 +448,13 @@ def aPath(pth):
 	# todo: this str conversion is some rubbish
 	return Path(bpy.path.abspath(str(pth)))
 
+def strhash(s):
+	try:
+		return hashlib.sha256(s).hexdigest()
+	except Exception as e:
+		return hashlib.sha256(str(s).encode()).hexdigest()
+	
+
 # self.report({'WARNING'}, str(e))
 
 # Convert image from path to vtf
@@ -535,7 +565,7 @@ def blvtf_export_img_to_vtf(img_info, reporter=None):
 	])
 
 	# execute conversion
-	print('Executing VTF conversion', str(input_filepath))
+	print('Executing VTF conversion', str(input_filepath), vtfcmd_args)
 	vtf_echo = None
 	with subprocess.Popen(vtfcmd_args, stdout=subprocess.PIPE, bufsize=10**8) as vtf_pipe:
 		vtf_echo = vtf_pipe.stdout.read()
@@ -669,9 +699,18 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 			self.report({'WARNING'}, 'TxtMax is enabled, but no text file selected. Aborting')
 			return {'FINISHED'}
 
+		# Output has to be a valid dir
 		if not output_folder.is_dir():
 			self.report({'WARNING'}, 'The destination folder does not exist')
 			return {'FINISHED'}
+
+		# collect flags right away
+		vtf_flags = []
+		for flg in blvtf_flag_props:
+			if shared_params.get(flg) == True:
+				# important todo: this 'replace()' is just retarded
+				vtf_flags.append(flg.replace('vtf_flag_', ''))
+
 
 		# important todo: proper wildcard detection
 		wcard_symbols = (
@@ -684,34 +723,86 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 			'>',
 			'|'
 		)
-
-
 		glob_pattern = '*.*'
 		if len(set(wcard_symbols) & set(input_folder.name)) != 0:
 			glob_pattern = input_folder.name
 			input_folder = input_folder.parent
 
-		# collect flags right away
-		vtf_flags = []
-		for flg in blvtf_flag_props:
-			if shared_params.get(flg) == True:
-				# important todo: this 'replace()' is just retarded
-				vtf_flags.append(flg.replace('vtf_flag_', ''))
 
-		# traverse through images
-		for src_file in input_folder.glob(glob_pattern):
-			blvtf_export_img_to_vtf({
-				'enc': (batch_params.vtf_format, batch_params.vtf_format_w_alph),
-				'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if batch_params.vtf_mipmaps_enable else False,
-				'comp_refl': batch_params.vtf_compute_refl,
-				'src': src_file,
-				'dest': output_folder / f'{src_file.stem}.vtf',
-				'emb_alpha': False,
-				'resize': (batch_params.vtf_resize_method, shared_params.vtf_resize_filter, shared_params.vtf_resize_sharpen_filter) if batch_params.vtf_enable_resize else False,
-				'clamp_dims': (batch_params.vtf_resize_clamp_maxwidth, batch_params.vtf_resize_clamp_maxheight) if batch_params.vtf_resize_clamp else False,
-				# todo: oh fuck
-				'flags': tuple(vtf_flags),
-			}, self)
+		# collect tasks
+		# (image files to process, including all the info n shit)
+		tasks = {}
+
+		# Collect tasks from TxtMax, if any
+		if batch_params.txtmax_enabled:
+			patterns = {}
+
+			# collect patterns
+			for ln in batch_params.txtmax_file.lines:
+				ln = ln.body.strip()
+				if ln.startswith('#') or ln == '':
+					continue
+				raw_rule = list(filter(None, ln.replace('\t', ' ').split(' ')))
+				rname = raw_rule[0]
+
+				patterns[rname] = {
+					'format': raw_rule[1],
+					'sclamp': False,
+					'flags': vtf_flags
+				}
+
+				# Flag array
+				if raw_rule[-1].startswith('-'):
+					patterns[rname]['flags'] = tuple(set(filter(None, raw_rule[-1].replace('-', '').upper().split(','))) & set(blvtf_vtf_flags_s))
+					del raw_rule[-1]
+
+				# Size Clamp
+				if len(raw_rule) > 2:
+					sclamp = raw_rule[2].lower()
+					if 'x' in sclamp:
+						sclamp = sclamp.split('x')
+						patterns[rname]['sclamp'] = (sclamp[0], sclamp[1])
+
+			# Go through each pattern and get file paths from them
+			for pat in patterns:
+				for imgf in input_folder.glob(pat):
+					tasks[strhash(imgf)] = {
+						'enc': (patterns[pat]['format'], patterns[pat]['format']),
+						'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if batch_params.vtf_mipmaps_enable else False,
+						'comp_refl': batch_params.vtf_compute_refl,
+						'src': imgf,
+						'dest': output_folder / f'{imgf.stem}.vtf',
+						'emb_alpha': False,
+						# Aligning to the nearest power of 2 is always on for txtmax
+						'resize': (batch_params.vtf_resize_method, shared_params.vtf_resize_filter, shared_params.vtf_resize_sharpen_filter),
+						'clamp_dims': (patterns[pat]['sclamp'][0], patterns[pat]['sclamp'][1]) if patterns[pat]['sclamp'] else False,
+						# todo: oh fuck
+						'flags': patterns[pat]['flags'],
+					}
+
+
+		# Collect tasks from main batch
+		if not batch_params.txtmax_enabled or (batch_params.txtmax_enabled and batch_params.txtmax_use_fallback):
+			for tsk_file in input_folder.glob(glob_pattern):
+				tsk_hash = strhash(tsk_file)
+				if not tsk_hash in tasks:
+					tasks[tsk_hash] = {
+						'enc': (batch_params.vtf_format, batch_params.vtf_format_w_alph),
+						'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if batch_params.vtf_mipmaps_enable else False,
+						'comp_refl': batch_params.vtf_compute_refl,
+						'src': tsk_file,
+						'dest': output_folder / f'{tsk_file.stem}.vtf',
+						'emb_alpha': False,
+						'resize': (batch_params.vtf_resize_method, shared_params.vtf_resize_filter, shared_params.vtf_resize_sharpen_filter) if batch_params.vtf_enable_resize else False,
+						'clamp_dims': (batch_params.vtf_resize_clamp_maxwidth, batch_params.vtf_resize_clamp_maxheight) if batch_params.vtf_resize_clamp else False,
+						# todo: oh fuck
+						'flags': tuple(vtf_flags),
+					}
+
+
+		# Process all tasks
+		for process_task in tasks:
+			blvtf_export_img_to_vtf(tasks[process_task], self)
 
 
 		return {'FINISHED'}
