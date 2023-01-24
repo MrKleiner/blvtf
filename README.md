@@ -30,14 +30,19 @@ Example:
 
 	*_diffuse.psd DXT1   1024x1024 -NOMIP,NORMAL
 	*_normal.psd  BGR888 -NOMIP,NORMAL
+	*_mrao.psd    *      *x* -*
 
 First line means:
  - Any file, which ends with _diffuse.psd
  - Should be converted to DXT1
  - Clamp dimensions to 1024x1024
- - Add "No Mipmap" and "Normal Map" flags. The flag array must start with "-", contain no whitespaces and always come as the last argument
+ - Add "No Mipmap" and "Normal Map" flags. The flag array must start with "-", contain no whitespaces and always come as the last argument.
+ To easily insert flags to the TextMax file, check required Flags in the batch conversion list, move cursor in the Text Editor to the desired location
+ and hit "Append Flags"
 
 Second line is the same, but the image size is not affected.
+
+Third line will use "Encoding", "Clamp Width / Clamp Height" and "Flags" from the base batch config, because '*' means "Use base batch config". Please notice that Flags still start with "-"
 
 If two identical wildcards were specified - the earliest one gets replaced with the latest one.
 

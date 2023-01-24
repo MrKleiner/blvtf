@@ -706,7 +706,7 @@ class OBJECT_OT_blvtf_export_marked_imgs(Operator, AddObjectHelper):
 		return {'FINISHED'}
 
 
-# todo: recursive conversion with folder structure preservation
+
 class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 	bl_idname = 'mesh.blvtf_folder_export'
 	bl_label = 'Batch Convert'
@@ -738,7 +738,9 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 			traverse_src = input_folder.glob
 
 		# collect flags right away
-		vtf_flags = blvtf_get_active_flags(shared_params)
+		batch_vtf_flags = blvtf_get_active_flags(batch_params)
+
+		print('Batch Flags', batch_vtf_flags)
 
 		# important todo: proper wildcard detection
 		wcard_symbols = (
@@ -774,14 +776,17 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 				rname = raw_rule[0]
 
 				patterns[rname] = {
-					'format': raw_rule[1],
+					'format': batch_params.vtf_format if raw_rule[1] == '*' else raw_rule[1],
 					'sclamp': False,
-					'flags': vtf_flags
+					'flags': batch_vtf_flags
 				}
 
 				# Flag array
 				if raw_rule[-1].startswith('-'):
-					patterns[rname]['flags'] = tuple(set(filter(None, raw_rule[-1].replace('-', '').upper().split(','))) & set(blvtf_vtf_flags_s))
+					if raw_rule[-1] == '-*':
+						patterns[rname]['flags'] = tuple(batch_vtf_flags)
+					else:
+						patterns[rname]['flags'] = tuple(set(filter(None, raw_rule[-1].replace('-', '').upper().split(','))) & set(blvtf_vtf_flags_s))
 					del raw_rule[-1]
 
 				# Size Clamp
@@ -789,7 +794,10 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 					sclamp = raw_rule[2].lower()
 					if 'x' in sclamp:
 						sclamp = sclamp.split('x')
-						patterns[rname]['sclamp'] = (sclamp[0], sclamp[1])
+						patterns[rname]['sclamp'] = (
+							str(batch_params.vtf_resize_clamp_maxwidth) if sclamp[0] == '*' else sclamp[0],
+							str(batch_params.vtf_resize_clamp_maxheight) if sclamp[1] == '*' else sclamp[1],
+						)
 
 			# Go through each pattern and get file paths from them
 			for pat in patterns:
@@ -824,7 +832,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 						'resize': (batch_params.vtf_resize_method, shared_params.vtf_resize_filter, shared_params.vtf_resize_sharpen_filter) if batch_params.vtf_enable_resize else False,
 						'clamp_dims': (batch_params.vtf_resize_clamp_maxwidth, batch_params.vtf_resize_clamp_maxheight) if batch_params.vtf_resize_clamp else False,
 						# todo: oh fuck
-						'flags': tuple(vtf_flags),
+						'flags': tuple(batch_vtf_flags),
 					}
 
 
@@ -836,6 +844,11 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 
 
 		return {'FINISHED'}
+
+
+
+
+
 
 
 
