@@ -1,7 +1,7 @@
 bl_info = {
 	'name': 'Blender VTF',
 	'author': 'MrKleiner',
-	'version': (0, 39),
+	'version': (0, 41),
 	'blender': (3, 4, 1),
 	'location': 'N menu in the Image Editor / UV Editor',
 	'description': """VTF Edit GUI in Blender""",
@@ -240,8 +240,8 @@ blvtf_vtfcmd_supported = (
 )
 
 blvtf_power_of_two = (
-	32768,
-	16384,
+	32_768,
+	16_384,
 	8192,
 	4096,
 	2048,
@@ -778,7 +778,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 				patterns[rname] = {
 					'format': batch_params.vtf_format if raw_rule[1] == '*' else raw_rule[1],
 					'sclamp': False,
-					'flags': batch_vtf_flags
+					'flags': []
 				}
 
 				# Flag array
