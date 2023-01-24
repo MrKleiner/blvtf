@@ -1,7 +1,7 @@
 bl_info = {
 	'name': 'Blender VTF',
 	'author': 'MrKleiner',
-	'version': (0, 37),
+	'version': (0, 39),
 	'blender': (3, 4, 1),
 	'location': 'N menu in the Image Editor / UV Editor',
 	'description': """VTF Edit GUI in Blender""",
@@ -701,8 +701,14 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 
 		# Output has to be a valid dir
 		if not output_folder.is_dir():
-			self.report({'WARNING'}, 'The destination folder does not exist')
+			self.report({'WARNING'}, 'The destination folder does not exist. Aborting')
 			return {'FINISHED'}
+
+		# Glob or Rglob
+		if batch_params.batch_recursive:
+			traverse_src = input_folder.rglob
+		else:
+			traverse_src = input_folder.glob
 
 		# collect flags right away
 		vtf_flags = []
@@ -765,13 +771,13 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 
 			# Go through each pattern and get file paths from them
 			for pat in patterns:
-				for imgf in input_folder.glob(pat):
+				for imgf in traverse_src(pat):
 					tasks[strhash(imgf)] = {
 						'enc': (patterns[pat]['format'], patterns[pat]['format']),
 						'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if batch_params.vtf_mipmaps_enable else False,
 						'comp_refl': batch_params.vtf_compute_refl,
 						'src': imgf,
-						'dest': output_folder / f'{imgf.stem}.vtf',
+						'dest': output_folder / imgf.relative_to(input_folder).with_suffix('.vtf'),
 						'emb_alpha': False,
 						# Aligning to the nearest power of 2 is always on for txtmax
 						'resize': (batch_params.vtf_resize_method, shared_params.vtf_resize_filter, shared_params.vtf_resize_sharpen_filter),
@@ -783,7 +789,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 
 		# Collect tasks from main batch
 		if not batch_params.txtmax_enabled or (batch_params.txtmax_enabled and batch_params.txtmax_use_fallback):
-			for tsk_file in input_folder.glob(glob_pattern):
+			for tsk_file in traverse_src(glob_pattern):
 				tsk_hash = strhash(tsk_file)
 				if not tsk_hash in tasks:
 					tasks[tsk_hash] = {
@@ -791,7 +797,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 						'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if batch_params.vtf_mipmaps_enable else False,
 						'comp_refl': batch_params.vtf_compute_refl,
 						'src': tsk_file,
-						'dest': output_folder / f'{tsk_file.stem}.vtf',
+						'dest': output_folder / tsk_file.relative_to(input_folder).with_suffix('.vtf'),
 						'emb_alpha': False,
 						'resize': (batch_params.vtf_resize_method, shared_params.vtf_resize_filter, shared_params.vtf_resize_sharpen_filter) if batch_params.vtf_enable_resize else False,
 						'clamp_dims': (batch_params.vtf_resize_clamp_maxwidth, batch_params.vtf_resize_clamp_maxheight) if batch_params.vtf_resize_clamp else False,
@@ -802,6 +808,8 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 
 		# Process all tasks
 		for process_task in tasks:
+			if tasks[process_task]['dest'].parent != output_folder:
+				tasks[process_task]['dest'].parent.mkdir(parents=True, exist_ok=True)
 			blvtf_export_img_to_vtf(tasks[process_task], self)
 
 
@@ -1202,7 +1210,12 @@ class blvtf_batch_convert_property_declaration(PropertyGroup):
 		subtype='DIR_PATH'
 	)
 
-
+	# Recursion
+	batch_recursive : BoolProperty(
+		name='Recursive',
+		description='Enable recursion and structure reconstruction',
+		default=False
+	)
 
 
 	# -------
@@ -1619,6 +1632,8 @@ class IMAGE_EDITOR_PT_blvtf_batch_export_prms_panel(bpy.types.Panel):
 
 		# Shared Scene params
 		batch_vtf_prms = context.scene.blvtf_batch_params
+
+		layout.row().prop(batch_vtf_prms, 'batch_recursive')
 
 		# Input / Output
 		col = layout.column(align=True)
