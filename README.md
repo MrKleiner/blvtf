@@ -72,3 +72,6 @@ What would happen:
 # Limitations
  - Animated textures are not supported yet
  - Images packed into the blend fille cannot be exported yet
+
+
+# Windows only. No Linux/Mac support planned. Switch to windows, you masochist
