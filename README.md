@@ -42,7 +42,8 @@ First line means:
 
 Second line is the same, but the image size is not affected.
 
-Third line will use "Encoding", "Clamp Width / Clamp Height" and "Flags" from the base batch config, because '*' means "Use base batch config". Please notice that Flags still start with "-"
+Third line will use "Encoding", "Clamp Width / Clamp Height" and "Flags" from the base batch config, because '*' means "Use base batch config".
+Please notice that Flags still start with "-" and dimensions still have an "x"
 
 If two identical wildcards were specified - the earliest one gets replaced with the latest one.
 
