@@ -986,7 +986,7 @@ class blvtf_individual_image_props_declaration(PropertyGroup):
 	# Embed an image into the alpha channel of the resulting VTF
 	embed_to_alpha: BoolProperty(
 		name='Embed to alpha channel',
-		description='Embed the selected image into the alpha channel of the resulting VTF',
+		description='Embed the selected image into the alpha channel of the resulting VTF (Selected image is rescaled to the dimensions of the target image if needed)',
 		default=False
 	)
 	image_to_embed : PointerProperty(
@@ -1182,7 +1182,7 @@ class blvtf_shared_image_props_declaration(PropertyGroup):
 	vtfcmd_ver : EnumProperty(
 		items=(
 			('new', 'Reloaded', 'Modern converter'),
-			('old', 'OG', 'Original converter'),
+			('old', 'OG (shit)', 'Original converter'),
 		),
 		name='Encoder Version',
 		description='Which VTF encoder version to use. Reloaded (new) is supposedly better in everything',
