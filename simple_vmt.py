@@ -149,5 +149,3 @@ def multImetr():
 	print(shit.params)
 
 	print(shit.to_vmt())
-
-multImetr()
