@@ -225,7 +225,7 @@ blvtf_vtf_flags_s = (
 blvtf_resize_methods = (
 	('NEAREST', 'Nearest Power Of 2', '1023 -> 1024, 570 -> 512'),
 	('BIGGEST', 'Biggest Power of 2', '1023 -> 1024, 570 -> 1024'),
-	('SMALLEST', 'Smallest Power of 2', '1023 -> 512, 570 -> 512')
+	('SMALLEST', 'Smallest Power of 2', '1023 -> 512, 570 -> 512'),
 )
 
 # file extensions supported by VTFCmd. Everything else has to be converted with imagemagick beforehand
@@ -236,7 +236,7 @@ blvtf_vtfcmd_supported = (
 	'.png',
 	'.bmp',
 	'.dds',
-	'.gif'
+	'.gif',
 )
 
 blvtf_power_of_two = (
@@ -397,14 +397,25 @@ def blvtf_img_to_tga(imgpath):
 	magix_prms = [
 		str(magix_exe),
 		f'{imgpath}[0]',
-		str(tgt_path)
+		# str(tgt_path)
 	]
+	# if src_path.suffix.lower().strip('.') in ('exr', 'hdr',):
+		# magix_prms.append('-set')
+		# magix_prms.append('colorspace RGB')
+		# magix_prms.append('')
+		# magix_prms.append('-colorspace')
+		# magix_prms.append('sRGB')
+		# magix_prms.append('-colorspace')
+		# magix_prms.append('RGB')
 
+	magix_prms.append(str(tgt_path))
+
+	print('Converting', imgpath, 'Because its not supported by vtfcmd. Magix params:', magix_prms)
 	tga_echo = None
 	with subprocess.Popen(magix_prms, stdout=subprocess.PIPE, bufsize=10**8) as img_pipe:
 		tga_echo = img_pipe.stdout.read()
 
-	print('TGA ECHO', tga_echo.decode())
+	print('CONVERTING UNSUPPORTED TO TGA ECHO', tga_echo.decode())
 
 	if not tgt_path.is_file():
 		return False
@@ -532,7 +543,7 @@ def blvtf_export_img_to_vtf(img_info, reporter=None):
 	if not img_src.suffix in blvtf_vtfcmd_supported and img_src_w_alpha == None:
 		img_src_converted = blvtf_img_to_tga(img_src)
 
-	input_filepath = img_src_w_alpha or img_src or img_src_converted
+	input_filepath = img_src_w_alpha or img_src_converted or img_src
 
 	vtfcmd_args = [
 		str(vtfcmd_exe if shared_params.vtfcmd_ver == 'new' else vtfcmd_exe_old),
@@ -580,9 +591,11 @@ def blvtf_export_img_to_vtf(img_info, reporter=None):
 	# Specify vtf version
 	vtfcmd_args.extend(['-version', shared_params.vtf_version])
 
+	# compute reflectivity
 	if img_info['comp_refl'] != True:
 		vtfcmd_args.append('-noreflectivity')
 
+	# Generate Thumbnail
 	if shared_params.vtf_generate_thumb != True:
 		vtfcmd_args.append('-nothumbnail')
 
@@ -598,6 +611,8 @@ def blvtf_export_img_to_vtf(img_info, reporter=None):
 	# execute conversion
 	print('Executing VTF conversion', str(input_filepath), vtfcmd_args)
 	vtf_echo = None
+	# todo: use lambda filter or whatever is better
+	vtfcmd_args = [str(c_arg) for c_arg in vtfcmd_args]
 	with subprocess.Popen(vtfcmd_args, stdout=subprocess.PIPE, bufsize=10**8) as vtf_pipe:
 		vtf_echo = vtf_pipe.stdout.read()
 
@@ -613,6 +628,31 @@ def blvtf_export_img_to_vtf(img_info, reporter=None):
 
 	if img_src_converted:
 		img_src_converted.unlink(missing_ok=True)
+
+	# 
+	# Write VMT, if any
+	# 
+	vmt_preset_name = img_info.get('vmt_preset')
+	if vmt_preset_name:
+		pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def blvtf_export_img_datablock(self, context, img):
@@ -661,6 +701,7 @@ def blvtf_export_img_datablock(self, context, img):
 		'clamp_dims': (img_vtf_prms.vtf_resize_clamp_maxwidth, img_vtf_prms.vtf_resize_clamp_maxheight) if img_vtf_prms.vtf_resize_clamp else False,
 		# todo: oh fuck
 		'flags': tuple(resulting_flags),
+		'vmt_preset': None,
 	}, self)
 
 
@@ -754,7 +795,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 			'\\',
 			'<',
 			'>',
-			'|'
+			'|',
 		)
 		glob_pattern = '*.*'
 		if len(set(wcard_symbols) & set(input_folder.name)) != 0:
@@ -781,7 +822,8 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 				patterns[rname] = {
 					'format': batch_params.vtf_format if raw_rule[1] == '*' else raw_rule[1],
 					'sclamp': False,
-					'flags': []
+					'flags': [],
+					'vmt_preset': None,
 				}
 
 				# Flag array
@@ -796,11 +838,24 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 				if len(raw_rule) > 2:
 					sclamp = raw_rule[2].lower()
 					if 'x' in sclamp:
-						sclamp = sclamp.split('x')
-						patterns[rname]['sclamp'] = (
-							str(batch_params.vtf_resize_clamp_maxwidth) if sclamp[0] == '*' else sclamp[0],
-							str(batch_params.vtf_resize_clamp_maxheight) if sclamp[1] == '*' else sclamp[1],
-						)
+						try:
+							sclamp = sclamp.split('x')
+							patterns[rname]['sclamp'] = (
+								str(batch_params.vtf_resize_clamp_maxwidth) if sclamp[0] == '*' else int(sclamp[0]),
+								str(batch_params.vtf_resize_clamp_maxheight) if sclamp[1] == '*' else int(sclamp[1]),
+							)
+							del raw_rule[-1]
+						except:
+							pass
+
+				# VMT preset
+				if len(raw_rule) > 2:
+					if raw_rule[-1].startswith('@'):
+						vmtpreset = raw_rule[-1].strip('@')
+						if bpy.data.texts.get(vmtpreset) != None:
+							patterns[rname]['vmt_preset'] = vmtpreset
+
+
 
 			# Go through each pattern and get file paths from them
 			for pat in patterns:
@@ -817,6 +872,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 						'clamp_dims': (patterns[pat]['sclamp'][0], patterns[pat]['sclamp'][1]) if patterns[pat]['sclamp'] else False,
 						# todo: oh fuck
 						'flags': patterns[pat]['flags'],
+						'vmt_preset': patterns[pat]['vmt_preset']
 					}
 
 
@@ -1794,7 +1850,6 @@ class IMAGE_EDITOR_PT_blvtf_execute_actions(bpy.types.Panel):
 
 		layout.operator('mesh.blvtf_export_marked_imgs')
 		layout.operator('mesh.blvtf_folder_export')
-
 
 
 
