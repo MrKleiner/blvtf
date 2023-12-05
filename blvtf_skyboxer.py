@@ -799,6 +799,15 @@ class VIEW3D_PT_blfoil_skyboxer(bpy.types.Panel):
 
 		general_col = layout.column(align=False)
 		general_col.label(text='Skybox exporter')
+		# general_col.label(text="""Please read this: For whatever fucking reason, VTEX decides to flip you off if any side of skybox is single colour only. Basically: If you have a skybox where bottom is just a black void - add any kind of visible and renderable object below the world origin, so that the bottom side of the skybox is diluted with some colour""")
+		general_col.label(text="""Please read this: For whatever fucking reason,""")
+		general_col.label(text="""VTEX decides to flip you off""")
+		general_col.label(text="""if any side of the skybox is single colour only""")
+		general_col.label(text="""Basically: If you have a skybox where bottom""")
+		general_col.label(text="""is just a black void - add any kind of""")
+		general_col.label(text="""visible and renderable object""")
+		general_col.label(text="""below the world origin, so that the""")
+		general_col.label(text="""side of the skybox is diluted with some colour""")
 		
 		usesrcops = general_col.row()
 		# todo: maybe make it disappear if not sourceops? make it disabled if no items in source ops?
