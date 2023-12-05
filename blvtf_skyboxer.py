@@ -125,8 +125,7 @@ def blvtf_skybox_maker(tgt_scene):
 	# exception raiser
 	# todo: get rid of this ?
 	def except_raiser(details=''):
-		# self.report({'WARNING'}, 'Game path invalid, go kys, fucker: Unable to locate vtex.exe')
-		raise Exception("""Something's very wrong: """ + str(details))
+		raise Exception("""blvtf error: """ + str(details))
 
 
 	# Blender render
@@ -166,7 +165,7 @@ def blvtf_skybox_maker(tgt_scene):
 		vtex_path = game_path.parent / 'bin' / 'vtex.exe'
 		print(str(vtex_path))
 		if not vtex_path.is_file():
-			except_raiser('Game path invalid, go kys: Unable to locate vtex.exe')
+			except_raiser('Invalid game path: Unable to locate vtex.exe')
 
 
 		sky_is_rect = sk_settings.halfsize
