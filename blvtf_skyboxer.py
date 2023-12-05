@@ -635,7 +635,7 @@ class blvtf_skyboxer_properties_declaration(PropertyGroup):
 	#              Skyboxer
 	# -----------------------------------
 	game_path : StringProperty(
-		name='Path to the game dir. half-life 2/ep2',
+		name='Path to the game directory. Such as "/half-life 2/ep2"',
 		description='Has to point to a valid source engine game setup. Such as "/half-life 2/ep2", where "half-life 2/bin" contains stuff like vtex.exe. Pro tip: you can create a default path by specifying the target path and then hitting File -> Defaults -> Save Startup File',
 		default='',
 		subtype='DIR_PATH'
