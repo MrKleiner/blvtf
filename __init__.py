@@ -46,6 +46,7 @@ magix_exe = addon_root_dir / 'bins' / 'imgmagick' / 'magick.exe'
 tmp_folder = addon_root_dir / 'tmps'
 
 
+from .blvtf_skyboxer import *
 
 
 
@@ -1865,6 +1866,7 @@ class IMAGE_EDITOR_PT_blvtf_execute_actions(bpy.types.Panel):
 
 
 rclasses = (
+	blvtf_skyboxer_properties_declaration,
 	blvtf_individual_image_props_declaration,
 	blvtf_shared_image_props_declaration,
 	blvtf_batch_convert_property_declaration,
@@ -1877,7 +1879,9 @@ rclasses = (
 	OBJECT_OT_blvtf_export_active_img,
 	OBJECT_OT_blvtf_export_marked_imgs,
 	OBJECT_OT_blvtf_folder_convert,
-	OBJECT_OT_blvtf_append_flags_to_txtmax_definition
+	OBJECT_OT_blvtf_append_flags_to_txtmax_definition,
+	OBJECT_OT_blvtf_full_skybox_compile,
+	VIEW3D_PT_blfoil_skyboxer,
 )
 
 register_, unregister_ = bpy.utils.register_classes_factory(rclasses)
@@ -1888,6 +1892,7 @@ def register():
 	bpy.types.Image.blvtf_img_params = PointerProperty(type=blvtf_individual_image_props_declaration)
 	bpy.types.Scene.blvtf_exp_params = PointerProperty(type=blvtf_shared_image_props_declaration)
 	bpy.types.Scene.blvtf_batch_params = PointerProperty(type=blvtf_batch_convert_property_declaration)
+	bpy.types.Scene.blvtf_skyboxer_params = PointerProperty(type=blvtf_skyboxer_properties_declaration)
 
 
 
