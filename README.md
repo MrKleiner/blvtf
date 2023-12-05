@@ -76,3 +76,21 @@ What would happen:
 
 
 # Windows only. No Linux/Mac support planned. Switch to windows, you masochist
+
+# Skyboxer (sexy feature)
+Located in 3D viewport -> N menu -> Skyboxer.
+
+The tool is capable of converting scenes into HDR Source skyboxes.
+
+Everything is done automatically, you don't have to setup anything besides
+specifying the game path.
+
+When the skybox is created - the entire scene is taken into consideration:
+This means you can create a scene with objects and a panorama in it and it'll get
+rendered into a single skybox.
+
+Honestly, just click the buttons and see what happens.
+
+Pro tip: Be careful when rendering with cycles: It might take a while.
+Yes, unfortunately this means the addon will hang for the period of
+the skybox creation.
