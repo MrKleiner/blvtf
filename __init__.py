@@ -381,6 +381,9 @@ def blvtf_resize_img_to_xy(imgpath, dims):
 		str(tgt_path)
 	]
 
+	if src_path.suffix.lower().strip('.') in ('exr', 'hdr', 'tiff',):
+		magix_prms.insert(2, '-auto-gamma')
+
 	resize_echo = None
 	with subprocess.Popen(magix_prms, stdout=subprocess.PIPE, bufsize=10**8) as img_pipe:
 		resize_echo = img_pipe.stdout.read()
@@ -400,7 +403,8 @@ def blvtf_img_to_tga(imgpath):
 		f'{imgpath}[0]',
 		# str(tgt_path)
 	]
-	# if src_path.suffix.lower().strip('.') in ('exr', 'hdr',):
+	if src_path.suffix.lower().strip('.') in ('exr', 'hdr', 'tiff',):
+		magix_prms.append('-auto-gamma')
 		# magix_prms.append('-set')
 		# magix_prms.append('colorspace RGB')
 		# magix_prms.append('')
@@ -596,6 +600,10 @@ def blvtf_export_img_to_vtf(img_info, reporter=None):
 	if img_info['comp_refl'] != True:
 		vtfcmd_args.append('-noreflectivity')
 
+	# sRGB shit
+	if img_info['srgb'] == True:
+		vtfcmd_args.append('-srgb')
+
 	# Generate Thumbnail
 	if shared_params.vtf_generate_thumb != True:
 		vtfcmd_args.append('-nothumbnail')
@@ -693,6 +701,7 @@ def blvtf_export_img_datablock(self, context, img):
 
 	blvtf_export_img_to_vtf({
 		'enc': (img_vtf_prms.vtf_format, img_vtf_prms.vtf_format_w_alph),
+		'srgb': img_vtf_prms.vtf_srgb_format,
 		'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if img_vtf_prms.vtf_mipmaps_enable else False,
 		'comp_refl': img_vtf_prms.vtf_compute_refl,
 		'src': aPath(img_data.filepath),
@@ -825,6 +834,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 					'sclamp': False,
 					'flags': [],
 					'vmt_preset': None,
+					'srgb': False,
 				}
 
 				# Flag array
@@ -833,7 +843,13 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 						patterns[rname]['flags'] = tuple(batch_vtf_flags)
 					else:
 						patterns[rname]['flags'] = tuple(set(filter(None, raw_rule[-1].replace('-', '').upper().split(','))) & set(blvtf_vtf_flags_s))
+
+					for srgb_check in raw_rule[-1].replace('-', '').lower().split(','):
+						if srgb_check.strip() == 'srgb':
+							patterns[rname]['srgb'] = True
+
 					del raw_rule[-1]
+
 
 				# Size Clamp
 				if len(raw_rule) > 2:
@@ -865,6 +881,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 						'enc': (patterns[pat]['format'], patterns[pat]['format']),
 						'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if batch_params.vtf_mipmaps_enable else False,
 						'comp_refl': batch_params.vtf_compute_refl,
+						'srgb': patterns[pat]['srgb'],
 						'src': imgf,
 						'dest': output_folder / imgf.relative_to(input_folder).with_suffix('.vtf'),
 						'emb_alpha': False,
@@ -885,6 +902,7 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 					tasks[tsk_hash] = {
 						'enc': (batch_params.vtf_format, batch_params.vtf_format_w_alph),
 						'mips': (shared_params.vtf_mipmap_filter, shared_params.vtf_mipmap_sharpen_filter) if batch_params.vtf_mipmaps_enable else False,
+						'srgb': False,
 						'comp_refl': batch_params.vtf_compute_refl,
 						'src': tsk_file,
 						'dest': output_folder / tsk_file.relative_to(input_folder).with_suffix('.vtf'),
@@ -925,6 +943,18 @@ class OBJECT_OT_blvtf_append_flags_to_txtmax_definition(Operator, AddObjectHelpe
 
 
 
+class OBJECT_OT_blvtf_append_template_syntax(Operator, AddObjectHelper):
+	bl_idname = 'mesh.blvtf_append_syntax_template'
+	bl_label = 'Append Syntax Template'
+	bl_options = {'REGISTER'}
+	bl_description = 'Append a sample syntax string to current position in TxtMax'
+
+	def execute(self, context):
+		if context.scene.blvtf_batch_params.txtmax_file:
+			context.scene.blvtf_batch_params.txtmax_file.write(
+				"""*_diffuse.psd   DXT1   1024x1024   -NOMIP,NORMAL"""
+			)
+		return {'FINISHED'}
 
 
 
@@ -935,6 +965,63 @@ class OBJECT_OT_blvtf_append_flags_to_txtmax_definition(Operator, AddObjectHelpe
 
 
 
+
+
+
+
+
+# =========================================================
+# ---------------------------------------------------------
+#                   UI List stuff
+# ---------------------------------------------------------
+# =========================================================
+class IMAGE_EDITOR_PT_marked_image_item(bpy.types.PropertyGroup):
+	image_ptr: bpy.props.PointerProperty(
+		name='Image',
+		type=bpy.types.Material,
+	)
+	name: bpy.props.StringProperty(
+		name='Name',
+		default='Unknown'
+	)
+
+
+class IMAGE_EDITOR_PT_marked_image_list(bpy.types.UIList):
+	def draw_item(
+		self,
+		context,
+		layout,
+		data,
+		item,
+		icon,
+		active_data,
+		active_propname,
+		index
+	):
+		row = layout.row()
+		row.prop(
+			item.image_ptr,
+			'name',
+			text="",
+			emboss=False,
+			icon_value=layout.icon(item.image_ptr)
+		)
+
+
+class blvtf_OT_get_marked_images(bpy.types.Operator):
+	bl_idname = 'blvtf.get_marked_images'
+	bl_label = ''
+
+	def execute(self, context):
+		scene = context.scene
+		scene.blvtf_marked_imgs.clear()
+		for img in bpy.data.images:
+			if img.do_export:
+				item = scene.blvtf_marked_imgs.add()
+				item.name = img.name
+				scene.blvtf_marked_imgs_idx = len(scene.blvtf_marked_imgs)
+
+		return {'FINISHED'}
 
 
 
@@ -1111,6 +1198,11 @@ class blvtf_individual_image_props_declaration(PropertyGroup):
 	vtf_compute_refl : BoolProperty(
 		name='Compute Reflectivity',
 		description='Compute Reflectivity',
+		default=True
+	)
+	vtf_srgb_format : BoolProperty(
+		name='sRGB Colour Space',
+		description='Treat the bitmap in sRGB colour space, instead of linear',
 		default=True
 	)
 
@@ -1624,6 +1716,7 @@ class IMAGE_EDITOR_PT_blvtf_individual_img_params_panel(bpy.types.Panel):
 		col = layout.column(align=True)
 		col.prop(img_vtf_prms, 'vtf_mipmaps_enable')
 		col.prop(img_vtf_prms, 'vtf_compute_refl')
+		col.prop(img_vtf_prms, 'vtf_srgb_format')
 
 		layout.prop(img_vtf_prms, 'vtf_export_path')
 
@@ -1775,6 +1868,11 @@ class IMAGE_EDITOR_PT_blvtf_batch_export_prms_panel(bpy.types.Panel):
 			row.operator('mesh.blvtf_append_flags_to_txtmax_definition')
 			row.enabled = not not batch_vtf_prms.txtmax_file
 
+			row = col.row()
+			row.alignment = 'LEFT'
+			row.operator('mesh.blvtf_append_syntax_template')
+			row.enabled = not not batch_vtf_prms.txtmax_file
+
 
 		# Formats
 		col = layout.column(align=True)
@@ -1882,6 +1980,7 @@ rclasses = (
 	OBJECT_OT_blvtf_append_flags_to_txtmax_definition,
 	OBJECT_OT_blvtf_full_skybox_compile,
 	VIEW3D_PT_blfoil_skyboxer,
+	OBJECT_OT_blvtf_append_template_syntax,
 )
 
 register_, unregister_ = bpy.utils.register_classes_factory(rclasses)
