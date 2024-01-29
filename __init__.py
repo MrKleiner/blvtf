@@ -5,7 +5,7 @@ bl_info = {
 	'blender': (4, 0, 0),
 	'location': 'N menu in the Image Editor / UV Editor',
 	'description': """VTF Edit GUI in Blender""",
-	'doc_url': '',
+	'doc_url': 'https://github.com/MrKleiner/blvtf',
 	'category': 'Add Mesh',
 }
 
