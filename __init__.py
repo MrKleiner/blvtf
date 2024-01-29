@@ -19,7 +19,7 @@ bl_info = {
 
 import bpy
 
-import hashlib, random, mathutils, time, datetime, subprocess, shutil, sys, os, json, math, re, sqlite3
+import hashlib, random, mathutils, time, datetime, subprocess, shutil, sys, os, json, math, re, sqlite3, threading
 
 from bpy_extras.object_utils import AddObjectHelper, object_data_add
 
@@ -130,7 +130,7 @@ blvtf_img_formats = (
 	('DXT5', 'DXT5', 'Lossy compression with good alpha'),
 	# uncompressed
 	('BGR888', 'BGR888', 'Lossless encoding without Alpha'),
-	('BGR565', 'BGR565', 'No compression, decreased bit depth, no Alpha'),
+	('BGR565', 'BGR565', 'No compression, decreased bit depth (smaller file size), no Alpha'),
 	('BGRA8888', 'BGRA8888', 'Lossless encoding with Alpha'),
 	('BGRA4444', 'BGRA4444', 'No compression, decreased bit depth, no Alpha'),
 	None,
@@ -140,7 +140,7 @@ blvtf_img_formats = (
 	('A8', 'A8', 'No RGB, alpha channel only (Lossless)'),
 	None,
 	# Other
-	('DXT1_ONEBITALPHA', 'DXT1_ONEBITALPHA', 'DXT1, but with one bit Alpha'),
+	('DXT1_ONEBITALPHA', 'DXT1_ONEBITALPHA', 'DXT1, but with one bit Alpha. VTFEdit Reloaded does not support this format. This format is commonly used to create hi-res pornography sprays with alpha'),
 	('RGB888', 'RGB888', 'Lossless encoding without Alpha'),
 	('RGB565', 'RGB565', 'No compression, decreased bit depth, no Alpha'),
 	('RGBA8888', 'RGBA8888', 'Lossless encoding with Alpha'),
@@ -291,7 +291,7 @@ blvtf_img_formats_lone = (
 
 
 
-
+display_warnings = []
 
 
 
@@ -307,6 +307,41 @@ blvtf_img_formats_lone = (
 #                  Actual shit. Functions
 # ---------------------------------------------------------
 # =========================================================
+
+
+class BLVTF_ExecutionProgress:
+	def __init__(self, context, total):
+		self.ctx = context
+		self.total = total or 1
+		self.exec_data = context.scene.blvtf_execution_prog_data
+
+		self.real_prog = 0
+
+	def __enter__(self):
+		self.exec_data.exec_active = True
+		self.exec_data.exec_prog = 0
+		self.exec_data.exec_total = self.total
+
+		return self.update
+
+	def __exit__(self, exc_type, exc_val, exc_tb):
+		self.exec_data.exec_active = False
+		self.exec_data.exec_prog = 0
+		self.exec_data.exec_total = 0
+		self.exec_data.exec_factor = 0.0
+
+
+	def update(self, amt=1):
+		self.real_prog += amt
+		self.exec_data.exec_factor = float(self.real_prog / self.total)
+		self.exec_data.exec_prog = self.real_prog
+
+
+
+def blvtf_marked_img_quickswitch(self, context):
+	# todo: is this check really neccessary here ?
+	if hasattr(context.space_data, 'image'):
+		context.space_data.image = bpy.data.images[context.scene.blvtf_quickswitch_idx]
 
 def blvtf_ensure_addon_setup():
 	if not vtfcmd_exe.is_file():
@@ -496,7 +531,12 @@ def blvtf_get_active_flags(src):
 
 
 def blvtf_set_view_channel(self, context):
-	context.space_data.display_channels = context.scene.blvtf_exp_params.display_channel
+	# todo: are these checks really needed ?
+	if hasattr(context.space_data, 'display_channels'):
+		context.space_data.display_channels = context.scene.blvtf_exp_params.display_channel
+	if hasattr(context.space_data, 'image'):
+		context.space_data.image.alpha_mode = 'CHANNEL_PACKED'
+
 
 # get flags from batch list and insert at current cursor position in the specified txtmax file
 def blvtf_insert_flags_at_cursor(self, context):
@@ -506,10 +546,12 @@ def blvtf_insert_flags_at_cursor(self, context):
 
 # Convert image from path to vtf
 # takes a dict of params
+"""
 {
 	'enc': ('(no alpha) DXT1', '(w alpha) DXT5'),
 	'mips': False or ('resize_filter', 'sharpen_filter'),
 	'comp_refl': True,
+	'srgb': True,
 	'src': 'W:/vid_dl/sex.tga',
 	'dest': 'W:/vid_dl/bdsm/pootis.vtf',
 	'emb_alpha': 'W:/vid_dl/specular.tga',
@@ -517,6 +559,7 @@ def blvtf_insert_flags_at_cursor(self, context):
 	'clamp_dims': False or (512, 512),
 	'flags': ('NORMAL', 'NOMIP', 'MINMIP'),
 }
+"""
 def blvtf_export_img_to_vtf(img_info, reporter=None):
 	img_src = Path(img_info['src'])
 	vtf_dest = Path(img_info['dest'])
@@ -525,14 +568,14 @@ def blvtf_export_img_to_vtf(img_info, reporter=None):
 	# check whether the destination folder exists
 	if not vtf_dest.parent.is_dir():
 		if reporter:
-			reporter.report({'WARNING'}, f'The destination folder >{vtf_dest.parent}< For the image >{img_src.name}< does not exist, skipping')
+			reporter.blvtf_report({'WARNING'}, f'The destination folder >{vtf_dest.parent}< For the image >{img_src.name}< does not exist, skipping')
 		return
 
 	# check whether the image is of applicable size
 	img_dims = blvtf_get_img_dims(img_src)
 	if (not img_dims[0] in blvtf_power_of_two or not img_dims[1] in blvtf_power_of_two) and not img_info['resize']:
 		if reporter:
-			reporter.report({'WARNING'}, f"""Skipping image {img_src.name}, because it's of unapplicable size! {img_dims}, please enable resizing""")
+			reporter.blvtf_report({'WARNING'}, f"""Skipping image {img_src.name}, because it's of unapplicable size! {img_dims}, please enable resizing""")
 		return
 
 	shared_params = bpy.context.scene.blvtf_exp_params
@@ -672,19 +715,19 @@ def blvtf_export_img_datablock(self, context, img):
 	# todo: Packed images are not supported yet
 	if img_data.is_embedded_data:
 		# todo: this reports with the datablock name, while other reporters use actual filename. This might be confusing at times
-		self.report({'WARNING'}, f'Image {img_data.name} is packed, but packed images are not supported yet. Skipping...')
+		self.blvtf_report({'WARNING'}, f'Image {img_data.name} is packed, but packed images are not supported yet. Skipping...')
 		return
 
 	# Check whether the source image exists
 	# Because why not...
 	if not aPath(img_data.filepath).is_file():
-		self.report({'WARNING'}, f'The Image {img_data.name} is missing from disk, skipping')
+		self.blvtf_report({'WARNING'}, f'The Image {img_data.name} is missing from disk, skipping')
 		return
 
 	add_alpha = False
 	if img_vtf_prms.embed_to_alpha:
 		if not img_vtf_prms.image_to_embed:
-			self.report({'WARNING'}, f'The Image {img_data.name} has "Embed Alpha" enabled, but the target image is missing. No alpha would be embedded')
+			self.blvtf_report({'WARNING'}, f'The Image {img_data.name} has "Embed Alpha" enabled, but the target image is missing. No alpha would be embedded')
 		else:
 			add_alpha = aPath(img_vtf_prms.image_to_embed.filepath)
 		
@@ -738,9 +781,15 @@ class OBJECT_OT_blvtf_export_active_img(Operator, AddObjectHelper):
 	bl_options = {'REGISTER'}
 	bl_description = """Export the image you're looking at right now"""
 
+	def blvtf_report(self, rtype, rmsg):
+		display_warnings.append(f'{rtype}: {rmsg}')
+		self.report(rtype, rmsg)
+
 	def execute(self, context):
 		# img_data = context.space_data.image
 		# img_vtf_prms = context.space_data.image.blvtf_img_params
+
+		display_warnings.clear()
 
 		blvtf_export_img_datablock(self, context, context.space_data.image)
 		return {'FINISHED'}
@@ -752,13 +801,36 @@ class OBJECT_OT_blvtf_export_marked_imgs(Operator, AddObjectHelper):
 	bl_options = {'REGISTER'}
 	bl_description = 'Export all the images from this blend file which were marked for export according to their settings ("Export this image" checkbox)'
 
+	def blvtf_report(self, rtype, rmsg):
+		display_warnings.append(f'{rtype}: {rmsg}')
+		self.report(rtype, rmsg)
+
 	def execute(self, context):
-		for eimg in bpy.data.images:
-			if eimg.blvtf_img_params.do_export == True:
-				blvtf_export_img_datablock(self, context, eimg)
+
+		# context.scene.blvtf_execution_prog_data.post_exec_msg = 'Working...'
+
+		display_warnings.clear()
+
+		threading.Thread(
+			target=self.thread_tgt,
+			args=(context,),
+			daemon=True,
+		).start()
 
 		return {'FINISHED'}
 
+
+	def thread_tgt(self, context):
+		tgt_imgs = [i for i in bpy.data.images if i.blvtf_img_params.do_export == True]
+
+		with BLVTF_ExecutionProgress(context, len(tgt_imgs)) as upd:
+			for eimg in tgt_imgs:
+				# time.sleep(1)
+				blvtf_export_img_datablock(self, context, eimg)
+				upd(1)
+
+		# context.scene.blvtf_execution_prog_data.post_exec_msg = 'No Errors occured during last execution'
+		context.scene.blvtf_execution_prog_data.post_exec_msg = 'Last execution had no errors'
 
 
 class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
@@ -767,7 +839,22 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 	bl_options = {'REGISTER'}
 	bl_description = 'Take images from the specified folder and convert them to VTF'
 
+	def blvtf_report(self, rtype, rmsg):
+		display_warnings.append(f'{rtype}: {rmsg}')
+		self.report(rtype, rmsg)
+
+
+	def thread_tgt(self, context, output_folder, tasks):
+		with BLVTF_ExecutionProgress(context, len(tasks)) as upd:
+			for process_task in tasks:
+				if tasks[process_task]['dest'].parent != output_folder:
+					tasks[process_task]['dest'].parent.mkdir(parents=True, exist_ok=True)
+				blvtf_export_img_to_vtf(tasks[process_task], self)
+				upd(1)
+
 	def execute(self, context):
+
+		display_warnings.clear()
 
 		shared_params = context.scene.blvtf_exp_params
 		batch_params = context.scene.blvtf_batch_params
@@ -777,12 +864,12 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 
 		# If TextMax is enabled, then a text file has to be specified
 		if batch_params.txtmax_enabled and not batch_params.txtmax_file:
-			self.report({'WARNING'}, 'TxtMax is enabled, but no text file selected. Aborting')
+			self.blvtf_report({'WARNING'}, 'TxtMax is enabled, but no text file selected. Aborting')
 			return {'FINISHED'}
 
 		# Output has to be a valid dir
 		if not output_folder.is_dir():
-			self.report({'WARNING'}, 'The destination folder does not exist. Aborting')
+			self.blvtf_report({'WARNING'}, 'The destination folder does not exist. Aborting')
 			return {'FINISHED'}
 
 		# Glob or Rglob
@@ -915,11 +1002,11 @@ class OBJECT_OT_blvtf_folder_convert(Operator, AddObjectHelper):
 
 
 		# Process all tasks
-		for process_task in tasks:
-			if tasks[process_task]['dest'].parent != output_folder:
-				tasks[process_task]['dest'].parent.mkdir(parents=True, exist_ok=True)
-			blvtf_export_img_to_vtf(tasks[process_task], self)
-
+		threading.Thread(
+			target=self.thread_tgt,
+			args=(context, output_folder, tasks,),
+			daemon=True,
+		).start()
 
 		return {'FINISHED'}
 
@@ -936,7 +1023,13 @@ class OBJECT_OT_blvtf_append_flags_to_txtmax_definition(Operator, AddObjectHelpe
 	bl_options = {'REGISTER'}
 	bl_description = 'Append flags enabled in the batch convert list to the TxtMax text file at the current cursor position using appropriate syntax (Just click this and see what it does)'
 
+	def blvtf_report(self, rtype, rmsg):
+		display_warnings.append(f'{rtype}: {rmsg}')
+		self.report(rtype, rmsg)
+
 	def execute(self, context):
+		display_warnings.clear()
+
 		if context.scene.blvtf_batch_params.txtmax_file:
 			context.scene.blvtf_batch_params.txtmax_file.write(f"""-{','.join(blvtf_get_active_flags(context.scene.blvtf_batch_params))}""")
 		return {'FINISHED'}
@@ -949,7 +1042,13 @@ class OBJECT_OT_blvtf_append_template_syntax(Operator, AddObjectHelper):
 	bl_options = {'REGISTER'}
 	bl_description = 'Append a sample syntax string to current position in TxtMax'
 
+	def blvtf_report(self, rtype, rmsg):
+		display_warnings.append(f'{rtype}: {rmsg}')
+		self.report(rtype, rmsg)
+
 	def execute(self, context):
+		display_warnings.clear()
+
 		if context.scene.blvtf_batch_params.txtmax_file:
 			context.scene.blvtf_batch_params.txtmax_file.write(
 				"""*_diffuse.psd   DXT1   1024x1024   -NOMIP,NORMAL"""
@@ -999,13 +1098,35 @@ class IMAGE_EDITOR_PT_marked_image_list(bpy.types.UIList):
 		index
 	):
 		row = layout.row()
-		row.prop(
-			item.image_ptr,
+		"""
+		prp = row.prop(
+			item,
 			'name',
-			text="",
+			text='',
 			emboss=False,
-			icon_value=layout.icon(item.image_ptr)
+			icon_value=layout.icon(item)
 		)
+		"""
+		prp = row.label(
+			text=item.name,
+			translate=False,
+			icon_value=layout.icon(item)
+		)
+
+	def filter_items(self, context, data, propname):
+		flt_flags = []
+		flt_neworder = []
+
+		img_list = getattr(data, propname)
+
+		if not flt_flags:
+			flt_flags = [self.bitflag_filter_item] * len(img_list)
+
+		for idx, img in enumerate(img_list):
+			if not img.blvtf_img_params.do_export:
+				flt_flags[idx] &= ~self.bitflag_filter_item
+
+		return flt_flags, flt_neworder
 
 
 class blvtf_OT_get_marked_images(bpy.types.Operator):
@@ -1400,6 +1521,36 @@ class blvtf_shared_image_props_declaration(PropertyGroup):
 
 
 
+class blvtf_execution_progress_data(PropertyGroup):
+
+	exec_active : BoolProperty(
+		name='An Execution is in progress',
+		description='This means the progress bar needs to be drawn',
+		default=False
+	)
+
+	exec_prog : IntProperty(
+		name='Execution Progress',
+		default=0,
+	)
+
+	exec_total : IntProperty(
+		name='Fuck',
+		default=0,
+	)
+
+	exec_factor : FloatProperty(
+		name='Factor used by blender',
+		default=0.0
+	)
+
+	post_exec_msg : StringProperty(
+		name='Message',
+		default=''
+	)
+
+
+
 class blvtf_batch_convert_property_declaration(PropertyGroup):
 
 	# -------
@@ -1673,6 +1824,25 @@ class blvtf_batch_convert_property_declaration(PropertyGroup):
 # ---------------------------------------------------------
 # =========================================================
 
+
+# 
+# Image quickswitch
+# 
+class IMAGE_EDITOR_PT_blvtf_Image_QuickSwitch(bpy.types.Panel):
+	bl_space_type = 'IMAGE_EDITOR'
+	bl_region_type = 'UI'
+	bl_category = 'blVTF'
+	bl_label = 'QuickSwitch'
+	# https://youtu.be/sT3joXENOb0
+
+	def draw(self, context):
+		layout = self.layout
+
+		layout.row().template_list(
+			'IMAGE_EDITOR_PT_marked_image_list', '', bpy.data, 'images', context.scene, 'blvtf_quickswitch_idx'
+		)
+
+
 #
 # Individual params
 #
@@ -1743,7 +1913,10 @@ class IMAGE_EDITOR_PT_blvtf_individual_img_params_panel(bpy.types.Panel):
 		# display a warning if image is of unapplicable size
 		if (not current_img.size[0] in blvtf_power_of_two or not current_img.size[1] in blvtf_power_of_two) and not img_vtf_prms.vtf_enable_resize:
 			layout.row().label(
-				text=f'WARNING: This image is of unapplicable size {tuple(current_img.size)}, enable resizing or this image will be skipped on export'
+				text=f'WARNING: This image is of unapplicable size {tuple(current_img.size)}'
+			)
+			layout.row().label(
+				text=f'Enable resizing or this image will be skipped on export.'
 			)
 
 		col = layout.column(align=True)
@@ -1947,23 +2120,32 @@ class IMAGE_EDITOR_PT_blvtf_execute_actions(bpy.types.Panel):
 			else:
 				row.enabled = False
 
-		layout.operator('mesh.blvtf_export_marked_imgs')
+		layout.operator(
+			'mesh.blvtf_export_marked_imgs',
+			text=f"""Export {len([i for i in bpy.data.images if i.blvtf_img_params.do_export])} Marked Images"""
+		)
 		layout.operator('mesh.blvtf_folder_export')
 
+		exec_data = context.scene.blvtf_execution_prog_data
 
+		if exec_data.exec_active:
+			layout.progress(
+				text=f'{exec_data.exec_prog} / {exec_data.exec_total}',
+				factor=float(exec_data.exec_prog / (exec_data.exec_total or 1)),
+				type='BAR'
+			)
 
+		# layout.label(text=exec_data.post_exec_msg)
 
-
-
-
-
-
-
+		for rep in display_warnings:
+			layout.label(text=rep)
 
 
 
 
 rclasses = (
+	blvtf_execution_progress_data,
+	IMAGE_EDITOR_PT_blvtf_Image_QuickSwitch,
 	blvtf_skyboxer_properties_declaration,
 	blvtf_individual_image_props_declaration,
 	blvtf_shared_image_props_declaration,
@@ -1981,6 +2163,7 @@ rclasses = (
 	OBJECT_OT_blvtf_full_skybox_compile,
 	VIEW3D_PT_blfoil_skyboxer,
 	OBJECT_OT_blvtf_append_template_syntax,
+	IMAGE_EDITOR_PT_marked_image_list,
 )
 
 register_, unregister_ = bpy.utils.register_classes_factory(rclasses)
@@ -1992,6 +2175,8 @@ def register():
 	bpy.types.Scene.blvtf_exp_params = PointerProperty(type=blvtf_shared_image_props_declaration)
 	bpy.types.Scene.blvtf_batch_params = PointerProperty(type=blvtf_batch_convert_property_declaration)
 	bpy.types.Scene.blvtf_skyboxer_params = PointerProperty(type=blvtf_skyboxer_properties_declaration)
+	bpy.types.Scene.blvtf_quickswitch_idx = IntProperty(name='QuickSwitch Index', default=0, update=blvtf_marked_img_quickswitch)
+	bpy.types.Scene.blvtf_execution_prog_data = PointerProperty(type=blvtf_execution_progress_data)
 
 
 
